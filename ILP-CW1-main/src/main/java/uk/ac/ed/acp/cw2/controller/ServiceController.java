@@ -1,14 +1,12 @@
 package uk.ac.ed.acp.cw2.controller;
 
+import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import uk.ac.ed.acp.cw2.data.LngLatPairRequest;
-import uk.ac.ed.acp.cw2.data.Position;
-import uk.ac.ed.acp.cw2.data.Region;
-import uk.ac.ed.acp.cw2.data.StartRequest;
+import uk.ac.ed.acp.cw2.data.*;
 
 import java.net.URL;
 import java.util.List;
@@ -48,53 +46,75 @@ public class ServiceController {
     }
 
     @PostMapping("/distanceTo")
-    public double distanceTo(@RequestBody LngLatPairRequest request) {
+    public double distanceTo(@RequestBody LngLatPairRequest request, HttpServletResponse response) {
         Position position1 = request.getPosition1();
         Position position2 = request.getPosition2();
-        double euclideanDistance = sqrt(pow((position1.lng() - position2.lng()), 2) + pow((position1.lat() - position2.lat()), 2));
+
+        double pos1_lat = position1.getLat();
+        double pos1_lng = position1.getLng();
+        double pos2_lat = position2.getLat();
+        double pos2_lng = position2.getLng();
+
+        if ((pos1_lng > 0) || (pos2_lng > 0)) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+        } else if ((pos1_lat < 0) || (pos2_lat < 0)) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+        }
+
+        double euclideanDistance = sqrt(pow((pos1_lng - pos2_lng), 2) + pow((pos1_lat - pos2_lat), 2));
+        response.setStatus(HttpServletResponse.SC_OK);
         return euclideanDistance;
     }
 
     @PostMapping("/isCloseTo")
-    public boolean isCloseTo(@RequestBody LngLatPairRequest request) {
+    public boolean isCloseTo(@RequestBody LngLatPairRequest request, HttpServletResponse response) {
         Position position1 = request.getPosition1();
         Position position2 = request.getPosition2();
 
+        double pos1_lat = position1.getLat();
+        double pos1_lng = position1.getLng();
+        double pos2_lat = position2.getLat();
+        double pos2_lng = position2.getLng();
+
         // Longitude will always be negative
-        if (position1.lng() > 0 || position2.lng() > 0) {
-            ResponseEntity.badRequest();
+        if (pos1_lng > 0 || pos2_lng > 0) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
         }
         // Lattitude will always be positive
-        else if (position1.lat() < 0 || position2.lat() < 0) {
-            ResponseEntity.badRequest();
+        else if (pos1_lat < 0 || pos2_lat < 0) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
         }
 
-        double difference_lng = position1.lng() - position2.lng();
-        double difference_lat = position1.lat() - position2.lat();
+        double difference_lng = pos1_lng - pos2_lng;
+        double difference_lat = pos1_lat - pos2_lat;
 
         double euclideanDistance = sqrt(pow(difference_lng, 2) + pow(difference_lat, 2));
 
         if (euclideanDistance < 0.00015) {
+            response.setStatus(HttpServletResponse.SC_OK);
             return true;
         } else {
+            response.setStatus(HttpServletResponse.SC_OK);
             return false;
         }
+
     }
 
     @PostMapping("/nextPosition")
-    public ResponseEntity<Position> nextPosition(@RequestBody StartRequest request) {
+    public Position nextPosition(@RequestBody StartRequest request, HttpServletResponse response) {
 
         double STEP_DEGREE = 0.00015;
 
-        Position start = request.getStart();
-        int angle = request.getAngle();
+        Position start = request.start();
+        int angle = request.angle();
 
+        // Angle can only be one of the 16 angles
         if ((angle % 22.5) != 0) {
-            return ResponseEntity.badRequest().build();
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
         }
 
-        double lattitude = start.lat();
-        double longitude = start.lng();
+        double lattitude = start.getLat();
+        double longitude = start.getLng();
 
         double bearing_radians = Math.toRadians(angle);
 
@@ -105,22 +125,48 @@ public class ServiceController {
         double newLng = longitude + degrees_longitude;
         Position newPosition = new Position(newLat, newLng);
 
-        return ResponseEntity.ok(newPosition);
+        response.setStatus(HttpServletResponse.SC_OK);
+        return newPosition;
 
     }
 
     @PostMapping("/isInRegion")
-    public ResponseEntity<Object> isInRegion(@RequestBody Region region) {
-        String name = region.name();
-        List<Position> vertices = region.vertices();
+    public Boolean isInRegion(@RequestBody RegionCheckRequest request, HttpServletResponse response) {
+        Position position = request.getPosition();
+        Region region = request.getRegion();
+        
+        double lattitude_pos = position.getLat();
+        double longitude_pos = position.getLng();
+        String name = region.getName();
+        List<Position> vertices = region.getVertices();
 
         // Region not closed by data points - invalid data
-        if (vertices.getFirst() != vertices.getLast()) {
-            return ResponseEntity.badRequest().build();
+        Position first = vertices.getFirst();
+        Position last = vertices.getLast();
+        if (!first.equals(last)) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
         }
 
+        boolean inside = false;
+        int n = vertices.size();
+        for (int i = 0, j = n-1; i < n; j= i++) {
+            double xi = vertices.get(i).getLng();
+            double yi = vertices.get(i).getLat();
+            double xj = vertices.get(j).getLng();
+            double yj = vertices.get(j).getLat();
 
-        return null;
+            System.out.println(xi + " " + yi + " " + xj + " " + yj);
+
+            boolean intersect = ((yi > lattitude_pos) != (yj > lattitude_pos)) &&
+                    (longitude_pos < (xj - xi) * (lattitude_pos - yi) / (yj - yi) + xi);
+
+            if (intersect) {
+                inside = true;
+            }
+        }
+
+        response.setStatus(HttpServletResponse.SC_OK);
+        return inside;
     }
 
 }
