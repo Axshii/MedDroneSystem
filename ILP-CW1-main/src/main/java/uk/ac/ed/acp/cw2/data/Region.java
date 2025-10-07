@@ -5,8 +5,10 @@ import lombok.Data;
 
 import java.util.List;
 
-@Data
-public class Region {
-    String name;
-    List<Position> vertices;
+public record Region(String name, List<Position> vertices) {
+
+    public Boolean isValid() {
+        return name != null && !name.isEmpty() && !name.isBlank()
+                && vertices != null && !vertices.isEmpty();
+    }
 }

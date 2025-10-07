@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import uk.ac.ed.acp.cw2.data.*;
 
 import java.net.URL;
@@ -13,6 +14,7 @@ import java.util.List;
 
 import static java.lang.Math.pow;
 import static java.lang.Math.sqrt;
+import static org.springframework.http.HttpStatus.BAD_REQUEST;
 
 /**
  * Controller class that handles various HTTP endpoints for the application.
@@ -47,18 +49,21 @@ public class ServiceController {
 
     @PostMapping("/distanceTo")
     public double distanceTo(@RequestBody LngLatPairRequest request, HttpServletResponse response) {
-        Position position1 = request.getPosition1();
-        Position position2 = request.getPosition2();
 
-        double pos1_lat = position1.getLat();
-        double pos1_lng = position1.getLng();
-        double pos2_lat = position2.getLat();
-        double pos2_lng = position2.getLng();
+        if (request == null || !request.position1().isValid() || !request.position2().isValid()) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+        }
 
-        if ((pos1_lng > 0) || (pos2_lng > 0)) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-        } else if ((pos1_lat < 0) || (pos2_lat < 0)) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+        Position position1 = request.position1();
+        Position position2 = request.position2();
+
+        double pos1_lat = position1.lat();
+        double pos1_lng = position1.lng();
+        double pos2_lat = position2.lat();
+        double pos2_lng = position2.lng();
+
+        if ((pos1_lng > 0) || (pos2_lng > 0) || (pos1_lat < 0) || (pos2_lat < 0)) {
+            throw new ResponseStatusException(BAD_REQUEST, "Invalid lattitude/ longitude values");
         }
 
         double euclideanDistance = sqrt(pow((pos1_lng - pos2_lng), 2) + pow((pos1_lat - pos2_lat), 2));
@@ -68,21 +73,24 @@ public class ServiceController {
 
     @PostMapping("/isCloseTo")
     public boolean isCloseTo(@RequestBody LngLatPairRequest request, HttpServletResponse response) {
-        Position position1 = request.getPosition1();
-        Position position2 = request.getPosition2();
 
-        double pos1_lat = position1.getLat();
-        double pos1_lng = position1.getLng();
-        double pos2_lat = position2.getLat();
-        double pos2_lng = position2.getLng();
-
-        // Longitude will always be negative
-        if (pos1_lng > 0 || pos2_lng > 0) {
+        if (request == null || !request.position1().isValid() || !request.position2().isValid()) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            return false;
         }
-        // Lattitude will always be positive
-        else if (pos1_lat < 0 || pos2_lat < 0) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+
+        assert request != null;
+        Position position1 = request.position1();
+        Position position2 = request.position2();
+
+        double pos1_lat = position1.lat();
+        double pos1_lng = position1.lng();
+        double pos2_lat = position2.lat();
+        double pos2_lng = position2.lng();
+
+        // Longitude will always be negative and lattitude will always be positive
+        if (pos1_lng > 0 || pos2_lng > 0 || pos1_lat < 0 || pos2_lat < 0) {
+            throw new ResponseStatusException(BAD_REQUEST, "Invalid lattitude/ longitude values");
         }
 
         double difference_lng = pos1_lng - pos2_lng;
@@ -105,16 +113,20 @@ public class ServiceController {
 
         double STEP_DEGREE = 0.00015;
 
+        if (request == null || !request.isValid()) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+        }
+
         Position start = request.start();
         int angle = request.angle();
 
         // Angle can only be one of the 16 angles
         if ((angle % 22.5) != 0) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            throw new ResponseStatusException(BAD_REQUEST, "Angle is not one of the 16 angles");
         }
 
-        double lattitude = start.getLat();
-        double longitude = start.getLng();
+        double lattitude = start.lat();
+        double longitude = start.lng();
 
         double bearing_radians = Math.toRadians(angle);
 
@@ -132,28 +144,37 @@ public class ServiceController {
 
     @PostMapping("/isInRegion")
     public Boolean isInRegion(@RequestBody RegionCheckRequest request, HttpServletResponse response) {
-        Position position = request.getPosition();
-        Region region = request.getRegion();
-        
-        double lattitude_pos = position.getLat();
-        double longitude_pos = position.getLng();
-        String name = region.getName();
-        List<Position> vertices = region.getVertices();
+
+        if (request == null || !request.isValid()) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+        }
+
+        Position position = request.position();
+        Region region = request.region();
+
+        if (!position.isValid() || !region.isValid()) {
+            throw new ResponseStatusException(BAD_REQUEST);
+        }
+
+        double lattitude_pos = position.lat();
+        double longitude_pos = position.lng();
+        String name = region.name();
+        List<Position> vertices = region.vertices();
 
         // Region not closed by data points - invalid data
         Position first = vertices.getFirst();
         Position last = vertices.getLast();
         if (!first.equals(last)) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            throw new ResponseStatusException(BAD_REQUEST);
         }
 
         boolean inside = false;
         int n = vertices.size();
         for (int i = 0, j = n-1; i < n; j= i++) {
-            double xi = vertices.get(i).getLng();
-            double yi = vertices.get(i).getLat();
-            double xj = vertices.get(j).getLng();
-            double yj = vertices.get(j).getLat();
+            double xi = vertices.get(i).lng();
+            double yi = vertices.get(i).lat();
+            double xj = vertices.get(j).lng();
+            double yj = vertices.get(j).lat();
 
             System.out.println(xi + " " + yi + " " + xj + " " + yj);
 

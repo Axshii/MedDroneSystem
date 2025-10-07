@@ -20,10 +20,6 @@ public class ServiceControllerTests {
     @Autowired
     private MockMvc mockMvc;
 
-    @Autowired
-    private ObjectMapper objectMapper;
-
-
     // uid() tests
     @Test
     void returnUid() throws Exception {
